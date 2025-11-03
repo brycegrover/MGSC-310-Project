@@ -1,0 +1,141 @@
+---
+title: "Final Project"
+author: "Ewan, Bryce, Brandon, Todd"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(rsample)
+library(tree)
+library(caret)
+library(ggcorrplot)
+library(lindia)
+options(scipen = 99)
+``` 
+
+
+```{r}
+housing <- read.csv("housing.csv")
+housing <- na.omit(housing)
+
+housing$ocean_proximity <-factor(housing$ocean_proximity)
+
+glimpse(housing)
+summary(housing)
+```
+
+
+
+```{r}
+set.seed(310)
+housing_split <- initial_split(housing, prop = 0.8)
+housing_train <- training(housing_split)
+housing_test <- testing(housing_split)
+```
+
+
+```{r}
+cor_table <- cor(housing %>% select_if(is.numeric))
+print(cor_table)
+
+ggcorrplot(cor_table)
+```
+
+```{r}
+linear_model <- lm(median_house_value ~ ., data = housing_train)
+
+summary(linear_model)
+coef(linear_model)
+```
+
+```{r}
+value_train_pred <- predict(linear_model)
+value_results_train <- 
+  housing_train %>% mutate(median_house_value_pred = value_train_pred)
+
+#testing
+value_test_pred <- predict(linear_model, newdata = housing_test)
+value_results_test <- 
+  housing_test %>% mutate(median_house_value_pred = value_test_pred)
+
+rmse_linear_train <- RMSE(value_results_train$median_house_value_pred, value_results_train$median_house_value)
+
+rmse_linear_test <- RMSE(value_results_test$median_house_value_pred, value_results_test$median_house_value)
+
+
+print(rmse_linear_train)
+print(rmse_linear_test)
+print(rmse_linear_test-rmse_linear_train)
+
+```
+
+```{r}
+
+#plot predicted mpg against actual mpg
+ggplot(value_results_test, aes(x = median_house_value, y = median_house_value_pred)) +
+  geom_point() +
+  labs(x = "Actual Value", y = "Predicted Value")
+
+#residual versus predicted
+gg_resfitted(linear_model)
+```
+
+
+```{r}
+tree_mod <- tree(median_house_value ~ .,
+                 data = housing_train)
+
+# Report the results
+summary(tree_mod) # summary of the model and its performance
+print(tree_mod)   # tree structure of all the nodes and branches
+
+# Plot the tree
+plot(tree_mod)
+text(tree_mod, pretty = 0, cex = 0.7,  digit = 2) 
+```
+
+```{r}
+
+# Predict the median_house_value for train and test
+predicted_tree_train <- predict(tree_mod, newdata = housing_train)
+predicted_tree_test <- predict(tree_mod, newdata = housing_test)
+
+
+# Measure RMSE for train and test
+RMSE(predicted_tree_train, housing_train$median_house_value)
+RMSE(predicted_tree_test, housing_test$median_house_value)
+```
+
+```{r}
+# cross-validation to find best tree size
+cv.median_house_value <- cv.tree(tree_mod)
+
+# report the results
+print(cv.median_house_value) # 8 is the best
+plot(cv.median_house_value$size, cv.median_house_value$dev, type = 'b') # 8 is the best
+
+cv_results <- data.frame(
+  tree_size = cv.median_house_value$size, 
+  error = cv.median_house_value$dev) # 8 is the best
+
+print(cv_results)
+
+best_pruned_tree <- prune.tree(tree_mod, best = 8)
+plot(best_pruned_tree)
+text(best_pruned_tree, pretty = 0, cex = 0.7,  digit = 2)
+```
+
+```{r}
+predicted_pruned_tree_train <- predict(best_pruned_tree)
+predicted_pruned_tree_test <- predict(best_pruned_tree, newdata = housing_test)
+
+rmse_train = RMSE(predicted_pruned_tree_train, housing_train$median_house_value)
+rmse_test = RMSE(predicted_pruned_tree_test, housing_test$median_house_value)
+
+print(rmse_train)
+print(rmse_test)
+print(rmse_test - rmse_train)
+```
+
